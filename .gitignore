@@ -1,0 +1,7 @@
+wandb
+docker
+docs
+checkpoints
+data
+outputs
+__pycache__

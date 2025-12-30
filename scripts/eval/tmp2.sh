@@ -1,0 +1,2 @@
+bash /mnt/weka/home/yongxin.wang/workspace/lark/FlameR/scripts/eval/Qwen2.5-Math-7B-16k-think-Prompt2-Step-Once.sh
+bash /mnt/weka/home/yongxin.wang/workspace/lark/FlameR/scripts/eval/Qwen3-4B-Base-Prompt2-Step-Fold.sh
