@@ -703,6 +703,7 @@ class RayPPOTrainer:
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
 
         # dump generations
+        print("Dumping validation generations...")
         val_data_dir = self.config.trainer.get("validation_data_dir", None)
         if val_data_dir:
             self._dump_generations(
@@ -717,7 +718,8 @@ class RayPPOTrainer:
             assert len(lst) == 0 or len(lst) == len(sample_scores), f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
 
         data_sources = np.concatenate(data_source_lst, axis=0)
-
+        
+        print("Processing validation metrics...")
         data_src2var2metric2val = process_validation_metrics(data_sources, sample_inputs, reward_extra_infos_dict)
         metric_dict = {}
         for data_source, var2metric2val in data_src2var2metric2val.items():
@@ -1559,13 +1561,8 @@ class RayFoldThoughtTrainer:
             test_batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(test_batch.batch))], dtype=object) # question prompt id
             test_batch = test_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n, interleave=True)
             test_batch.non_tensor_batch["sid"] = np.array([str(uuid.uuid4()) for _ in range(len(test_batch.batch))], dtype=object) # solution id
-
-            # print(test_batch)
-            print("...format gen batch")
             test_gen_batch = self.format_gen_batch(test_batch)
-            # print(test_gen_batch)
-            
-            print("...begin fold step rollout")
+
             test_nodes_list = self.sequential_step_rollout(test_gen_batch)
             leaf_nodes = self.get_leaf_nodes(test_nodes_list)
 
@@ -1575,10 +1572,8 @@ class RayFoldThoughtTrainer:
                 leaf_batch_output.append(node.format_batch())
             leaf_batch_output = DataProto.concat(leaf_batch_output)
             leaf_batch_output.batch["response_mask"] = compute_response_mask(leaf_batch_output)
-            # print(leaf_batch_output)
 
             # compute rewards and advantagers
-            print("... compute leaf rewards")
             leaf_nodes_score, leaf_reward_tensor = self.compute_leaf_nodes_rewards(leaf_nodes)
             sample_scores.extend(leaf_nodes_score)
 
@@ -1593,7 +1588,6 @@ class RayFoldThoughtTrainer:
             data_source_lst.append(leaf_batch_output.non_tensor_batch.get("data_source", ["unknown"] * leaf_reward_tensor.shape[0]))
 
             reward_extra_infos_dict["reward"].extend(leaf_nodes_score)
-            # print(f"len reward_extra_infos_dict['reward']: {len(reward_extra_infos_dict['reward'])}")
 
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
 
@@ -1629,7 +1623,7 @@ class RayFoldThoughtTrainer:
                     metric_dict[pfx] = metric_val
 
         avg_test_score = sum(sample_scores) / len(sample_scores)
-        metric_dict["leaf_scores/val"]: avg_test_score
+        metric_dict["leaf_scores/val"] = avg_test_score
 
         return metric_dict
         
@@ -2090,7 +2084,6 @@ class RayFoldThoughtTrainer:
             current_generation_step += 1
             print(f"### Generation step {current_generation_step} ###")
 
-            print("...format current gen batch")
             current_gen_batch = []
             for step_node in nodes_list[-1]: # nodes from last generation step
                 if not step_node.is_end:
@@ -2309,24 +2302,6 @@ class RayFoldThoughtTrainer:
                 )
                 """
 
-
-                # pop those keys for generation
-                # batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
-                # non_tensor_batch_keys_to_pop = ["raw_prompt_ids", "uid", "sid", "reward_model", "data_source", "reward_key", "ability", "extra_info", "index"]
-                # if "multi_modal_data" in batch.non_tensor_batch:
-                #     non_tensor_batch_keys_to_pop.append("multi_modal_data")
-                # if "raw_prompt" in batch.non_tensor_batch:
-                #     non_tensor_batch_keys_to_pop.append("raw_prompt")
-                # if "tools_kwargs" in batch.non_tensor_batch:
-                #     non_tensor_batch_keys_to_pop.append("tools_kwargs")
-                # if "interaction_kwargs" in batch.non_tensor_batch:
-                #     non_tensor_batch_keys_to_pop.append("interaction_kwargs")
-                # gen_batch = batch.pop(
-                #     batch_keys=batch_keys_to_pop,
-                #     non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
-                # )
-                
-
                 is_last_step = self.global_steps >= self.total_training_steps
                 
                 gen_batch = self.format_gen_batch(batch)
@@ -2345,7 +2320,7 @@ class RayFoldThoughtTrainer:
                         })
 
                         sequence_node.compute_leaf_adv(leaf_nodes)
-                        sequence_node.sequence_broadcast_adv(nodes_list, do_print=True) # , do_print=True
+                        sequence_node.sequence_broadcast_adv(nodes_list, do_print=False) # do_print=True
 
                     # format train batch
                     batch = sequence_node.collect_train_batch(nodes_list[0], self.actor_rollout_wg.world_size)

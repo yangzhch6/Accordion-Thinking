@@ -5,7 +5,7 @@ export NUM_GPUS=$(nvidia-smi --list-gpus | wc -l)
 
 ## model, file and save path 
 project_name='Folding-Thoughts'
-experiment_name='debug-Qwen2.5-Math-7B-16k-think-Prompt2StepFold-Openr1Math46k-StepFold-r12k'
+experiment_name='Qwen2.5-Math-7B-16k-think-Prompt2StepFold-Openr1Math46k-StepFold-r12k'
 model_name_or_path=/mnt/weka/home/yongxin.wang/workspace/lark/swift-pipeline/ckpt/think-step/Qwen2.5-Math-7B-16k-think-Prompt2-Step-Fold/v0-20251228-174712/checkpoint-5493
 train_path=data/think-fold/openr1-math-46k.parquet  # training data path
 test_path=data/think-fold/amc23_aime2425_math500_minerva.parquet
@@ -18,7 +18,7 @@ use_dynamic_bsz=True
 tensor_model_parallel_size=1 # rollout and training batch size
 use_tqdm=True # whether using tqdm in vLLM generation
 save_freq=100
-test_freq=50
+test_freq=100
 total_training_steps=500
 
 ## training parameters
