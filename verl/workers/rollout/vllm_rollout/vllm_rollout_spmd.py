@@ -327,7 +327,14 @@ class vLLMRollout(BaseRollout):
         # position_ids:   [0,0,0,0,0,1,2,3, | 4,5,6,7,8,9,10,11]
         response_position_ids = position_ids[..., -1:] + delta_position_id
         position_ids = torch.cat([position_ids, response_position_ids], dim=-1)
-        response_attention_mask = get_response_mask(response_id=response, eos_token=[eos_token_id,eos_step_token_ids], dtype=attention_mask.dtype)
+        attn_eos_ids = []
+        if type(eos_token_id) is list:
+            attn_eos_ids.extend(eos_token_id)
+        else:
+            attn_eos_ids.append(eos_token_id)
+        attn_eos_ids.append(eos_step_token_ids)
+        
+        response_attention_mask = get_response_mask(response_id=response, eos_token=attn_eos_ids, dtype=attention_mask.dtype)
         attention_mask = torch.cat((attention_mask, response_attention_mask), dim=-1)
 
         # all the tp ranks should contain the same data here. data in all ranks are valid
