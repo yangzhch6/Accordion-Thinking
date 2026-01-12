@@ -22,7 +22,7 @@ import hydra
 import ray
 from omegaconf import OmegaConf
 
-from verl.trainer.ppo.ray_trainer import RayPPOTrainer, RaySvSTrainer
+from verl.trainer.ppo.ray_trainer import RayPPOTrainer, RayFoldThoughtTrainer
 from verl.trainer.ppo.reward import load_reward_manager
 from verl.workers.reward_manager.prime import MathVerifyRewardManager
 
@@ -173,7 +173,12 @@ class TaskRunner:
         train_sampler = create_rl_sampler(config.data, train_dataset)
 
         # Initialize the PPO trainer.
-        Trainer = RaySvSTrainer if config.trainer.task == "svs" else RayPPOTrainer
+        if config.trainer.task == "rl":
+            Trainer = RayPPOTrainer
+        elif config.trainer.task == "fold-thought":
+            Trainer = RayFoldThoughtTrainer
+        else:
+            raise NotImplementedError(f"Trainer task {config.trainer.task} is not implemented.")
 
         trainer = Trainer(
             config=config,

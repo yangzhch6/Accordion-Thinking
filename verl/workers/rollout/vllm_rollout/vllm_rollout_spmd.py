@@ -212,6 +212,7 @@ class vLLMRollout(BaseRollout):
 
         # used to construct attention_mask
         eos_token_id = prompts.meta_info["eos_token_id"]
+        eos_step_token_ids = prompts.meta_info["stop_token_ids"][0]
 
         batch_size = idx.size(0)
 
@@ -239,8 +240,7 @@ class vLLMRollout(BaseRollout):
 
         do_sample = prompts.meta_info.get("do_sample", True)
         is_validate = prompts.meta_info.get("validate", False)
-        is_r2q = prompts.meta_info.get("r2q", False)
-        is_self_improve = prompts.meta_info.get("self_improve", False)
+        is_fold = prompts.meta_info.get("fold_thought", False)
         if not do_sample:
             kwargs = {
                 "best_of": 1,
@@ -258,16 +258,10 @@ class vLLMRollout(BaseRollout):
                 "temperature": self.config.val_kwargs.temperature,
                 "n": 1,  # if validate, already repeat in ray_trainer
             }
-        elif is_r2q:
+        elif is_fold:
             kwargs = {
-                "top_p": prompts.meta_info.get("top_p", 0.95),
-                "temperature": prompts.meta_info.get("temperature", 0.7),  # if validate, already repeat in ray_trainer
-                "n": prompts.meta_info.get("n", 1)
-            }
-            print(f">>> vllm_r2q: top_p={kwargs['top_p']}, temperature={kwargs['temperature']}")
-        elif is_self_improve:
-            kwargs = {
-                "n": prompts.meta_info.get("n", 1),
+                "stop_token_ids": prompts.meta_info["stop_token_ids"],
+                "n": prompts.meta_info["n"],
             }
 
         lora_requests = None
@@ -333,7 +327,7 @@ class vLLMRollout(BaseRollout):
         # position_ids:   [0,0,0,0,0,1,2,3, | 4,5,6,7,8,9,10,11]
         response_position_ids = position_ids[..., -1:] + delta_position_id
         position_ids = torch.cat([position_ids, response_position_ids], dim=-1)
-        response_attention_mask = get_response_mask(response_id=response, eos_token=eos_token_id, dtype=attention_mask.dtype)
+        response_attention_mask = get_response_mask(response_id=response, eos_token=[eos_token_id,eos_step_token_ids], dtype=attention_mask.dtype)
         attention_mask = torch.cat((attention_mask, response_attention_mask), dim=-1)
 
         # all the tp ranks should contain the same data here. data in all ranks are valid
