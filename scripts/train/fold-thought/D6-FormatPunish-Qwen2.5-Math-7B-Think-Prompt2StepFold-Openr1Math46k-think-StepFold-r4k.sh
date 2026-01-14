@@ -5,7 +5,7 @@ export NUM_GPUS=$(nvidia-smi --list-gpus | wc -l)
 
 ## model, file and save path 
 project_name='Folding-Thoughts'
-experiment_name='Qwen2.5-Math-7B-16k-think-Prompt2StepFold-Openr1Math46k-StepFold-r12k'
+experiment_name='D6-FormatPunish-Qwen2.5-Math-7B-16k-think-Prompt2StepFold-Openr1Math46k-StepFold-r4k'
 model_name_or_path=/mnt/weka/home/yongxin.wang/workspace/lark/swift-pipeline/ckpt/think-step/Qwen2.5-Math-7B-16k-think-Prompt2-Step-Fold/v0-20251228-174712/checkpoint-5493
 train_path=data/think-fold/openr1-math-46k.parquet  # training data path
 test_path=data/think-fold/amc23_aime2425_math500_minerva.parquet
@@ -13,7 +13,7 @@ save_path=checkpoints/${project_name}/${experiment_name} # define the path for s
 
 ## system parameters
 use_chat_template=True
-val_before_train=True # set to 1 to launch validation before inference
+val_before_train=False # set to 1 to launch validation before inference
 use_dynamic_bsz=True
 tensor_model_parallel_size=1 # rollout and training batch size
 use_tqdm=True # whether using tqdm in vLLM generation
@@ -22,7 +22,9 @@ test_freq=100
 total_training_steps=500
 
 ## training parameters
-max_generation_steps=5
+max_generation_steps=6
+val_max_generation_steps=8
+apply_format_punish=True
 norm_adv_by_std_in_grpo=False
 total_epochs=30
 train_batch_size=128 #128
@@ -35,8 +37,8 @@ kl_loss_coef=0.0
 n_samples=8 # 8
 val_samples=8 # 8
 temperature=1.0
-max_prompt_length=10240 
-max_response_length=4096 # 12288
+max_prompt_length=12288 # 12288
+max_response_length=4096
 ppo_max_token_len_per_gpu=$((max_prompt_length + max_response_length))
 estimator=grpo
 use_kl_loss=$( [ "$(echo "$kl_loss_coef > 0.0" | bc)" -eq 1 ] && echo true || echo false )
@@ -77,6 +79,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.temperature=${temperature} \
     actor_rollout_ref.rollout.n=${n_samples} \
     +actor_rollout_ref.rollout.max_generation_steps=${max_generation_steps} \
+    +actor_rollout_ref.rollout.val_max_generation_steps=${val_max_generation_steps} \
     actor_rollout_ref.rollout.val_kwargs.temperature=${temperature} \
     actor_rollout_ref.rollout.val_kwargs.n=${val_samples} \
     actor_rollout_ref.rollout.use_tqdm=${use_tqdm} \
@@ -85,6 +88,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=${use_kl_in_reward} \
     algorithm.norm_adv_by_std_in_grpo=${norm_adv_by_std_in_grpo} \
+    +algorithm.apply_format_punish=${apply_format_punish} \
     trainer.critic_warmup=0 \
     trainer.project_name=${project_name} \
     trainer.experiment_name=${experiment_name} \

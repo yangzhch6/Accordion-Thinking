@@ -141,7 +141,17 @@ def sequence_broadcast_adv(nodes_list, do_print=False):
 
 
 class SequenceNode:
-    def __init__(self, data_dict, bos_step_token_id, eos_step_token_id, pad_token_id, replace_ids, depth=0, prompt_length=10240, max_response_length=4096, max_step_summary_length=1536):
+    def __init__(self, 
+            data_dict, 
+            bos_step_token_id, 
+            eos_step_token_id, 
+            pad_token_id, 
+            replace_ids, 
+            depth=0, 
+            prompt_length=10240, 
+            max_response_length=4096, 
+            max_step_summary_length=1536, 
+        ):
         self.depth = depth
         self.prompt_length = prompt_length
         self.max_response_length = max_response_length

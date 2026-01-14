@@ -1563,7 +1563,7 @@ class RayFoldThoughtTrainer:
             test_batch.non_tensor_batch["sid"] = np.array([str(uuid.uuid4()) for _ in range(len(test_batch.batch))], dtype=object) # solution id
             test_gen_batch = self.format_gen_batch(test_batch)
 
-            test_nodes_list = self.sequential_step_rollout(test_gen_batch)
+            test_nodes_list = self.sequential_step_rollout(test_gen_batch, is_validation=True)
             leaf_nodes = self.get_leaf_nodes(test_nodes_list)
 
             # format leaf node batch 
@@ -1574,7 +1574,7 @@ class RayFoldThoughtTrainer:
             leaf_batch_output.batch["response_mask"] = compute_response_mask(leaf_batch_output)
 
             # compute rewards and advantagers
-            leaf_nodes_score, leaf_reward_tensor = self.compute_leaf_nodes_rewards(leaf_nodes)
+            leaf_nodes_score = self.compute_leaf_nodes_rewards(leaf_nodes)
             sample_scores.extend(leaf_nodes_score)
 
             input_ids = leaf_batch_output.batch["input_ids"][:, :self.config.data.max_prompt_length]
@@ -1585,7 +1585,7 @@ class RayFoldThoughtTrainer:
             output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
             sample_outputs.extend(output_texts)
 
-            data_source_lst.append(leaf_batch_output.non_tensor_batch.get("data_source", ["unknown"] * leaf_reward_tensor.shape[0]))
+            data_source_lst.append(leaf_batch_output.non_tensor_batch.get("data_source", ["unknown"] * len(leaf_batch_output.batch)))
 
             reward_extra_infos_dict["reward"].extend(leaf_nodes_score)
 
@@ -1960,7 +1960,7 @@ class RayFoldThoughtTrainer:
 
     # depth=0: 'batch' are input batch
     # depth=1: 'batch' are after first generation batch
-    def batch2nodes(self, batch: DataProto, depth: int):
+    def batch2nodes(self, batch: DataProto, depth: int, is_validation: bool = False):
         data_dict_lst = sequence_node.convert_batch_to_lst(batch)
 
         if depth > 0:
@@ -1982,21 +1982,6 @@ class RayFoldThoughtTrainer:
         }
         """
 
-        # current_step_nodes = []
-        # print("...converting batch to nodes")
-        # for data_dict in tqdm(data_dict_lst):
-        #     step_node = SequenceNode(
-        #         data_dict=data_dict,
-        #         bos_step_token_id=self.tokenizer.vocab["<step_bed619fva643c0v108hd53gcy>"],
-        #         eos_step_token_id=self.tokenizer.vocab["</step_bed619fva643c0v108hd53gcy>"],
-        #         pad_token_id=self.tokenizer.pad_token_id,
-        #         replace_ids=self.tokenizer.encode("\n\n...TLDR...\n\n", add_special_tokens=False),
-        #         depth=depth,
-        #         prompt_length=self.config.data.max_prompt_length,
-        #         max_response_length=self.config.data.max_response_length,
-        #     )
-        #     current_step_nodes.append(step_node)
-
         current_step_nodes = []
 
         bos_step_token_id=self.tokenizer.vocab["<step_bed619fva643c0v108hd53gcy>"]
@@ -2014,9 +1999,8 @@ class RayFoldThoughtTrainer:
                 replace_ids=replace_ids,
                 depth=depth,
                 prompt_length=self.config.data.max_prompt_length,
-                max_response_length=self.config.data.max_response_length,
+                max_response_length=self.config.data.max_response_length
             )
-        print("...converting batch to nodes")
 
         # 使用ThreadPoolExecutor并行处理
         with concurrent.futures.ThreadPoolExecutor(max_workers=128) as executor:
@@ -2024,7 +2008,7 @@ class RayFoldThoughtTrainer:
             futures = executor.map(process_single_data, data_dict_lst)
             # 使用tqdm包装结果以显示进度
             current_step_nodes = list(tqdm(futures, total=len(data_dict_lst)))
-        print("...conversion done")
+
         return current_step_nodes
 
 
@@ -2043,7 +2027,7 @@ class RayFoldThoughtTrainer:
             self.print_node(node.children[0])
 
 
-    def sequential_step_rollout(self, gen_batch: DataProto):
+    def sequential_step_rollout(self, gen_batch: DataProto, is_validation: bool = False):
         # set meta info for generation
         bos_step_token_id = self.tokenizer.vocab["<step_bed619fva643c0v108hd53gcy>"]
         eos_step_token_id = self.tokenizer.vocab["</step_bed619fva643c0v108hd53gcy>"]
@@ -2075,10 +2059,11 @@ class RayFoldThoughtTrainer:
         """
 
         nodes_list = [] # [ [SequenceNode,SequenceNode,SequenceNode], .... ]
-        root_nodes = self.batch2nodes(gen_batch, depth=0)
+        root_nodes = self.batch2nodes(gen_batch, depth=0, is_validation=is_validation)
         nodes_list.append(root_nodes)
         
-        max_generation_steps = self.config.actor_rollout_ref.rollout.max_generation_steps
+        max_generation_steps = self.config.actor_rollout_ref.rollout.max_generation_steps if not is_validation else self.config.actor_rollout_ref.rollout.val_max_generation_steps
+
         current_generation_step = 0
         while current_generation_step < max_generation_steps:
             current_generation_step += 1
@@ -2137,7 +2122,7 @@ class RayFoldThoughtTrainer:
             """
 
             # build nodes
-            current_nodes = self.batch2nodes(current_gen_batch_output, depth=current_generation_step)
+            current_nodes = self.batch2nodes(current_gen_batch_output, depth=current_generation_step, is_validation=is_validation)
 
 
             # link parent-child relationship
@@ -2177,23 +2162,34 @@ class RayFoldThoughtTrainer:
         leaf_batch_output = DataProto.concat(leaf_batch_output)
         leaf_batch_output.batch["response_mask"] = compute_response_mask(leaf_batch_output)
         leaf_batch_output.meta_info["global_token_num"] = torch.sum(leaf_batch_output.batch["attention_mask"], dim=-1).tolist()
-        reward_tensor, reward_extra_infos_dict = compute_reward(leaf_batch_output, self.reward_fn)
-        _, reward_tensor = reward_tensor
+        _, _ = compute_reward(leaf_batch_output, self.reward_fn)
 
         # assign leaf nodes, adv
         nodes_score = leaf_batch_output.batch["acc"]
         # print(nodes_score)
  
         nodes_score = nodes_score.cpu().tolist()
+
+        nodes_score_ = []
+        correct_end_cnt = 0
         for node, score in zip(leaf_nodes, nodes_score):
-            if node.reward is not None:
-                print("Warning: node.reward is already set ...")
+            if node.reward is not None: # 防止重复赋值
+                print("Warning: node.reward is already set, do not overwrite")
+                nodes_score_.append(node.reward)
                 continue
             else:
-                node.reward = score
+                # 如果启用了格式惩罚且节点不是结束节点，则奖励设为0
+                if self.config.algorithm.apply_format_punish and not node.is_end:
+                    node.reward = 0
+                    nodes_score_.append(node.reward)
+                else:
+                    node.reward = score
+                    correct_end_cnt += 1
+                    nodes_score_.append(node.reward)
+        print("### Format correct end leaf nodes: {}/{} ###".format(correct_end_cnt, len(leaf_nodes)))
+        return nodes_score_
 
-        return nodes_score, reward_tensor
-
+        
     def format_gen_batch(self, batch):
         # pop those keys for generation
         batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
@@ -2309,15 +2305,17 @@ class RayFoldThoughtTrainer:
                 with marked_timer("step", timing_raw):
                     with marked_timer("gen", timing_raw, color="red"):
                         # conduct step fold rollout
-                        nodes_list = self.sequential_step_rollout(gen_batch)
+                        nodes_list = self.sequential_step_rollout(gen_batch, is_validation=False)
                         leaf_nodes = self.get_leaf_nodes(nodes_list)
 
                         # compute rewards and advantagers
-                        leaf_nodes_score, leaf_reward_tensor = self.compute_leaf_nodes_rewards(leaf_nodes)
+                        leaf_nodes_score = self.compute_leaf_nodes_rewards(leaf_nodes)
                         avg_score = sum(leaf_nodes_score) / len(leaf_nodes_score)
                         metrics.update({
                             "leaf_scores/train": avg_score
                         })
+
+                        self.print_node(nodes_list[0][0])
 
                         sequence_node.compute_leaf_adv(leaf_nodes)
                         sequence_node.sequence_broadcast_adv(nodes_list, do_print=False) # do_print=True

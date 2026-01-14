@@ -5,7 +5,7 @@ export NUM_GPUS=$(nvidia-smi --list-gpus | wc -l)
 
 ## model, file and save path 
 project_name='Folding-Thoughts'
-experiment_name='Qwen3-4B-Base-Prompt2StepFold-Openr1Math46k-StepFold-r12k'
+experiment_name='D5-Qwen3-4B-Base-Prompt2StepFold-Openr1Math46k-StepFold-r4k'
 model_name_or_path=/mnt/weka/home/yongxin.wang/workspace/lark/swift-pipeline/ckpt/think-step/Qwen3-4B-Base-Openr1-Prompt2-Step-Fold/v0-20251222-171747/checkpoint-5493
 train_path=data/think-fold/openr1-math-46k.parquet  # training data path
 test_path=data/think-fold/amc23_aime2425_math500_minerva.parquet
@@ -23,10 +23,12 @@ total_training_steps=500
 
 ## training parameters
 max_generation_steps=5
+val_max_generation_steps=8
+apply_format_punish=False
 norm_adv_by_std_in_grpo=False
 total_epochs=30
 train_batch_size=128 #128
-val_batch_size=128 #128
+val_batch_size=512 #512
 ppo_mini_batch_size=128 # 128
 ppo_micro_batch_size_per_gpu=16 #16
 log_prob_micro_batch_size_per_gpu=1 #1
@@ -77,6 +79,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.temperature=${temperature} \
     actor_rollout_ref.rollout.n=${n_samples} \
     +actor_rollout_ref.rollout.max_generation_steps=${max_generation_steps} \
+    +actor_rollout_ref.rollout.val_max_generation_steps=${val_max_generation_steps} \
     actor_rollout_ref.rollout.val_kwargs.temperature=${temperature} \
     actor_rollout_ref.rollout.val_kwargs.n=${val_samples} \
     actor_rollout_ref.rollout.use_tqdm=${use_tqdm} \
@@ -85,6 +88,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=${use_kl_in_reward} \
     algorithm.norm_adv_by_std_in_grpo=${norm_adv_by_std_in_grpo} \
+    +algorithm.apply_format_punish=${apply_format_punish} \
     trainer.critic_warmup=0 \
     trainer.project_name=${project_name} \
     trainer.experiment_name=${experiment_name} \

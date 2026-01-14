@@ -181,6 +181,9 @@ class vLLMRollout(BaseRollout):
             if hasattr(SamplingParams(), str(k)):
                 kwargs[k] = config.get(k)
 
+        # This is a workaround for vLLM vocab size issue
+        kwargs['allowed_token_ids'] = list(range(len(tokenizer.vocab)))
+
         print(f"kwargs: {kwargs}")
         self.sampling_params = SamplingParams(**kwargs)
 
