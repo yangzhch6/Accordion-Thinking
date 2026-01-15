@@ -77,7 +77,7 @@ def _compute_response_info(batch: DataProto) -> Dict[str, Any]:
     )
 
 
-def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str, Any]:
+def compute_data_metrics(batch: DataProto, use_critic: bool = True, prefix: str = "fold") -> Dict[str, Any]:
     """
     Computes various metrics from a batch of data for PPO training.
 
@@ -128,43 +128,43 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
 
     metrics = {
         # score
-        "critic/score/mean": torch.mean(sequence_score).detach().item(),
-        "critic/score/max": torch.max(sequence_score).detach().item(),
-        "critic/score/min": torch.min(sequence_score).detach().item(),
+        f"critic/score/{prefix}/mean": torch.mean(sequence_score).detach().item(),
+        f"critic/score/{prefix}/max": torch.max(sequence_score).detach().item(),
+        f"critic/score/{prefix}/min": torch.min(sequence_score).detach().item(),
         # reward
-        "critic/rewards/mean": torch.mean(sequence_reward).detach().item(),
-        "critic/rewards/max": torch.max(sequence_reward).detach().item(),
-        "critic/rewards/min": torch.min(sequence_reward).detach().item(),
+        f"critic/rewards/{prefix}/mean": torch.mean(sequence_reward).detach().item(),
+        f"critic/rewards/{prefix}/max": torch.max(sequence_reward).detach().item(),
+        f"critic/rewards/{prefix}/min": torch.min(sequence_reward).detach().item(),
         # adv
-        "critic/advantages/mean": torch.mean(valid_adv).detach().item(),
-        "critic/advantages/max": torch.max(valid_adv).detach().item(),
-        "critic/advantages/min": torch.min(valid_adv).detach().item(),
+        f"critic/advantages/{prefix}/mean": torch.mean(valid_adv).detach().item(),
+        f"critic/advantages/{prefix}/max": torch.max(valid_adv).detach().item(),
+        f"critic/advantages/{prefix}/min": torch.min(valid_adv).detach().item(),
         # returns
-        "critic/returns/mean": torch.mean(valid_returns).detach().item(),
-        "critic/returns/max": torch.max(valid_returns).detach().item(),
-        "critic/returns/min": torch.min(valid_returns).detach().item(),
+        f"critic/returns/{prefix}/mean": torch.mean(valid_returns).detach().item(),
+        f"critic/returns/{prefix}/max": torch.max(valid_returns).detach().item(),
+        f"critic/returns/{prefix}/min": torch.min(valid_returns).detach().item(),
         **(
             {
                 # values
-                "critic/values/mean": torch.mean(valid_values).detach().item(),
-                "critic/values/max": torch.max(valid_values).detach().item(),
-                "critic/values/min": torch.min(valid_values).detach().item(),
+                f"critic/values/{prefix}/mean": torch.mean(valid_values).detach().item(),
+                f"critic/values/{prefix}/max": torch.max(valid_values).detach().item(),
+                f"critic/values/{prefix}/min": torch.min(valid_values).detach().item(),
                 # vf explained var
-                "critic/vf_explained_var": (1.0 - return_diff_var / (return_var + 1e-5)).detach().item(),
+                f"critic/vf_explained_var/{prefix}": (1.0 - return_diff_var / (return_var + 1e-5)).detach().item(),
             }
             if use_critic
             else {}
         ),
         # response length
-        "response_length/mean": torch.mean(response_length).detach().item(),
-        "response_length/max": torch.max(response_length).detach().item(),
-        "response_length/min": torch.min(response_length).detach().item(),
-        "response_length/clip_ratio": torch.mean(torch.eq(response_length, max_response_length).float()).detach().item(),
+        f"response_length/{prefix}/mean": torch.mean(response_length).detach().item(),
+        f"response_length/{prefix}/max": torch.max(response_length).detach().item(),
+        f"response_length/{prefix}/min": torch.min(response_length).detach().item(),
+        f"response_length/{prefix}/clip_ratio": torch.mean(torch.eq(response_length, max_response_length).float()).detach().item(),
         # prompt length
-        "prompt_length/mean": torch.mean(prompt_length).detach().item(),
-        "prompt_length/max": torch.max(prompt_length).detach().item(),
-        "prompt_length/min": torch.min(prompt_length).detach().item(),
-        "prompt_length/clip_ratio": torch.mean(torch.eq(prompt_length, max_prompt_length).float()).detach().item(),
+        f"prompt_length/{prefix}/mean": torch.mean(prompt_length).detach().item(),
+        f"prompt_length/{prefix}/max": torch.max(prompt_length).detach().item(),
+        f"prompt_length/{prefix}/min": torch.min(prompt_length).detach().item(),
+        f"prompt_length/{prefix}/clip_ratio": torch.mean(torch.eq(prompt_length, max_prompt_length).float()).detach().item(),
     }
     return metrics
 
@@ -208,7 +208,7 @@ def compute_timing_metrics(batch: DataProto, timing_raw: Dict[str, float]) -> Di
     }
 
 
-def compute_throughout_metrics(batch: DataProto, timing_raw: Dict[str, float], n_gpus: int) -> Dict[str, Any]:
+def compute_throughout_metrics(batch: DataProto, timing_raw: Dict[str, float], n_gpus: int, prefix: str = "fold") -> Dict[str, Any]:
     """
     Computes throughput metrics for PPO training.
 
@@ -238,9 +238,9 @@ def compute_throughout_metrics(batch: DataProto, timing_raw: Dict[str, float], n
     # f'Actual TFLOPs/s/GPU​': estimated_flops/(n_gpus),
     # f'Theoretical TFLOPs/s/GPU​': promised_flops,
     return {
-        "perf/total_num_tokens": total_num_tokens,
-        "perf/time_per_step": time,
-        "perf/throughput": total_num_tokens / (time * n_gpus),
+        f"perf/{prefix}/total_num_tokens": total_num_tokens,
+        f"perf/{prefix}/time_per_step": time,
+        f"perf/{prefix}/throughput": total_num_tokens / (time * n_gpus),
     }
 
 

@@ -324,6 +324,13 @@ class MathVerifyRewardManager:
 
         scores = self.verify(data)
 
+        format_scores = []
+        for seq in sequences_str:
+            seq_f_score = seq.count("<step_bed619fva643c0v108hd53gcy>") == seq.count("</step_bed619fva643c0v108hd53gcy>")
+            format_scores.append(float(seq_f_score))
+        print("## Avg format scores:", sum(format_scores) / len(format_scores))
+        scores = [s * f for s, f in zip(scores, format_scores)]
+
         for i in range(len(data)):
             data_source = data_sources[i]
             reward_tensor[i, valid_response_length[i].item() - 1] = scores[i]

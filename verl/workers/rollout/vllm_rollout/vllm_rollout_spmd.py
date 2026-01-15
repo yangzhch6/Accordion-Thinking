@@ -215,7 +215,6 @@ class vLLMRollout(BaseRollout):
 
         # used to construct attention_mask
         eos_token_id = prompts.meta_info["eos_token_id"]
-        eos_step_token_ids = prompts.meta_info["stop_token_ids"][0]
 
         batch_size = idx.size(0)
 
@@ -244,6 +243,7 @@ class vLLMRollout(BaseRollout):
         do_sample = prompts.meta_info.get("do_sample", True)
         is_validate = prompts.meta_info.get("validate", False)
         is_fold = prompts.meta_info.get("fold_thought", False)
+        is_once = prompts.meta_info.get("once_thought", False)
         if not do_sample:
             kwargs = {
                 "best_of": 1,
@@ -265,6 +265,12 @@ class vLLMRollout(BaseRollout):
             kwargs = {
                 "stop_token_ids": prompts.meta_info["stop_token_ids"],
                 "n": prompts.meta_info["n"],
+            }
+            eos_step_token_ids = prompts.meta_info["stop_token_ids"][0]
+        elif is_once:
+            kwargs = {
+                "n": prompts.meta_info["n"],
+                "max_tokens": prompts.meta_info["max_tokens"],
             }
 
         lora_requests = None
@@ -298,9 +304,13 @@ class vLLMRollout(BaseRollout):
                             curr_log_prob.append(logprob[response_ids[i]].logprob)
                         rollout_log_probs.append(curr_log_prob)
 
-            response = pad_2d_list_to_length(response, self.pad_token_id, max_length=self.config.response_length).to(idx.device)
+            if is_once:
+                pad_max_length = kwargs["max_tokens"]
+            else:
+                pad_max_length = self.config.response_length
+            response = pad_2d_list_to_length(response, self.pad_token_id, max_length=pad_max_length).to(idx.device)
             if self.config.calculate_log_probs:
-                rollout_log_probs = pad_2d_list_to_length(rollout_log_probs, -1, max_length=self.config.response_length).to(idx.device)
+                rollout_log_probs = pad_2d_list_to_length(rollout_log_probs, -1, max_length=pad_max_length).to(idx.device)
                 rollout_log_probs = rollout_log_probs.to(torch.float32)
 
             if self.sampling_params.n > 1 and do_sample:
@@ -330,12 +340,14 @@ class vLLMRollout(BaseRollout):
         # position_ids:   [0,0,0,0,0,1,2,3, | 4,5,6,7,8,9,10,11]
         response_position_ids = position_ids[..., -1:] + delta_position_id
         position_ids = torch.cat([position_ids, response_position_ids], dim=-1)
+
         attn_eos_ids = []
         if type(eos_token_id) is list:
             attn_eos_ids.extend(eos_token_id)
         else:
             attn_eos_ids.append(eos_token_id)
-        attn_eos_ids.append(eos_step_token_ids)
+        if is_fold: # add eos_step token in folding mode
+            attn_eos_ids.append(eos_step_token_ids)
         
         response_attention_mask = get_response_mask(response_id=response, eos_token=attn_eos_ids, dtype=attention_mask.dtype)
         attention_mask = torch.cat((attention_mask, response_attention_mask), dim=-1)

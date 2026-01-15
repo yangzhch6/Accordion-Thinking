@@ -5,8 +5,8 @@ export NUM_GPUS=$(nvidia-smi --list-gpus | wc -l)
 
 ## model, file and save path 
 project_name='Folding-Thoughts'
-experiment_name='D6-FormatPunish-Qwen2.5-Math-7B-Think-Prompt2StepFold-Openr1Math46k-StepFold-r6k'
-model_name_or_path=/mnt/weka/home/yongxin.wang/workspace/lark/swift-pipeline/ckpt/think-step/Qwen2.5-Math-7B-16k-think-Prompt2-Step-Fold/v0-20251228-174712/checkpoint-5493
+experiment_name='D6-Mix-FormatPunish-Qwen3-4B-Base-Prompt2StepFold-Openr1Math46k-Fold6k-Once12k'
+model_name_or_path=/mnt/weka/home/yongxin.wang/workspace/lark/swift-pipeline/ckpt/think-step/Qwen3-4B-Base-Openr1-Prompt2-Step-Fold/v0-20251222-171747/checkpoint-5493
 train_path=data/think-fold/openr1-math-46k.parquet  # training data path
 test_path=data/think-fold/amc23_aime2425_math500_minerva.parquet
 save_path=checkpoints/${project_name}/${experiment_name} # define the path for saving RL intermediate checkpoints
@@ -27,7 +27,7 @@ val_max_generation_steps=8
 apply_format_punish=True
 norm_adv_by_std_in_grpo=False
 total_epochs=30
-train_batch_size=1 #128
+train_batch_size=128 #128
 val_batch_size=512 #128
 ppo_mini_batch_size=128 # 64·
 ppo_micro_batch_size_per_gpu=16 #16

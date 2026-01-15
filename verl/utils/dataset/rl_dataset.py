@@ -104,6 +104,7 @@ class RLHFDataset(Dataset):
         self.image_key = config.get("image_key", "images")
         self.video_key = config.get("video_key", "videos")
         self.max_prompt_length = config.get("max_prompt_length", 1024)
+        self.max_once_prompt_length = config.get("max_once_prompt_length", self.max_prompt_length)
         self.return_raw_chat = config.get("return_raw_chat", False)
         self.return_full_prompt = config.get("return_full_prompt", False)
         self.truncation = config.get("truncation", "error")
@@ -176,9 +177,9 @@ class RLHFDataset(Dataset):
                 print(f"filter images with too small width or height, {ori_len - cur_len} images removed, current dataset len: {cur_len}")
 
             self.dataframe = self.dataframe.filter(
-                lambda doc: doc2len(doc) <= self.max_prompt_length,
+                lambda doc: doc2len(doc) <= self.max_once_prompt_length,
                 num_proc=self.num_workers,
-                desc=f"Filtering prompts longer than {self.max_prompt_length} tokens",
+                desc=f"Filtering prompts longer than {self.max_once_prompt_length} tokens",
             )
 
             print(f"filter dataset len: {len(self.dataframe)}")
@@ -292,17 +293,17 @@ class RLHFDataset(Dataset):
         row_dict["position_ids"] = position_ids[0]
 
         raw_prompt_ids = self.tokenizer.encode(raw_prompt, add_special_tokens=False)
-        if len(raw_prompt_ids) > self.max_prompt_length:
+        if len(raw_prompt_ids) > self.max_once_prompt_length:
             if self.truncation == "left":
-                raw_prompt_ids = raw_prompt_ids[-self.max_prompt_length :]
+                raw_prompt_ids = raw_prompt_ids[-self.max_once_prompt_length :]
             elif self.truncation == "right":
-                raw_prompt_ids = raw_prompt_ids[: self.max_prompt_length]
+                raw_prompt_ids = raw_prompt_ids[: self.max_once_prompt_length]
             elif self.truncation == "middle":
-                left_half = self.max_prompt_length // 2
-                right_half = self.max_prompt_length - left_half
+                left_half = self.max_once_prompt_length // 2
+                right_half = self.max_once_prompt_length - left_half
                 raw_prompt_ids = raw_prompt_ids[:left_half] + raw_prompt_ids[-right_half:]
             elif self.truncation == "error":
-                raise RuntimeError(f"Prompt length {len(raw_prompt_ids)} is longer than {self.max_prompt_length}.")
+                raise RuntimeError(f"Prompt length {len(raw_prompt_ids)} is longer than {self.max_once_prompt_length}.")
 
         row_dict["raw_prompt_ids"] = raw_prompt_ids
         # encode prompts without chat template
