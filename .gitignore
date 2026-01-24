@@ -5,3 +5,6 @@ checkpoints
 data
 outputs
 __pycache__
+slurm
+eval
+scripts_hidden
