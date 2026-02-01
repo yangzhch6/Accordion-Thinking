@@ -1575,7 +1575,7 @@ class RayFoldThoughtTrainer:
             leaf_batch_output.batch["response_mask"] = compute_response_mask(leaf_batch_output)
 
             # compute rewards and advantagers
-            leaf_nodes_score = self.compute_leaf_nodes_rewards(leaf_nodes, apply_format_punish=False) # do not apply format punish during validation
+            leaf_nodes_score, _ = self.compute_leaf_nodes_rewards(leaf_nodes, apply_format_punish=False) # do not apply format punish during validation
             sample_scores.extend(leaf_nodes_score)
 
             input_ids = leaf_batch_output.batch["input_ids"][:, :self.config.data.max_prompt_length]
@@ -1614,14 +1614,19 @@ class RayFoldThoughtTrainer:
         for data_source, var2metric2val in data_src2var2metric2val.items():
             core_var = "acc" if "acc" in var2metric2val else "reward"
             for var_name, metric2val in var2metric2val.items():
-                n_max = max([int(name.split("@")[-1].split("/")[0]) for name in metric2val.keys()])
+                if var_name != "reward":
+                    continue
+                # n_max = max([int(name.split("@")[-1].split("/")[0]) for name in metric2val.keys()])
                 for metric_name, metric_val in metric2val.items():
-                    if (var_name == core_var) and any(metric_name.startswith(pfx) for pfx in ["mean", "maj", "best"]) and (f"@{n_max}" in metric_name):
-                        metric_sec = "val-core"
-                    else:
-                        metric_sec = "val-aux"
-                    pfx = f"{metric_sec}/{data_source}/{var_name}/{metric_name}"
-                    metric_dict[pfx] = metric_val
+                    if metric_name == "mean@1":
+                        pfx = f"val-core/{data_source}/{var_name}/{metric_name}"
+                        metric_dict[pfx] = metric_val
+                        # if (var_name == core_var) and any(metric_name.startswith(pfx) for pfx in ["mean", "maj", "best"]) and (f"@{n_max}" in metric_name):
+                        #     metric_sec = "val-core"
+                        # else:
+                        #     metric_sec = "val-aux"
+                        # pfx = f"{metric_sec}/{data_source}/{var_name}/{metric_name}"
+                        # metric_dict[pfx] = metric_val
 
         avg_test_score = sum(sample_scores) / len(sample_scores)
         metric_dict["leaf_scores/val"] = avg_test_score
@@ -2070,7 +2075,8 @@ class RayFoldThoughtTrainer:
                     correct_end_cnt += 1
                     nodes_score_.append(node.reward)
         print("### Format correct end leaf nodes: {}/{} ###".format(correct_end_cnt, len(leaf_nodes)))
-        return nodes_score_
+        format_err_ratio = 1.0 - correct_end_cnt / len(leaf_nodes)
+        return nodes_score_, format_err_ratio
 
         
     def format_gen_batch(self, batch):
@@ -2192,10 +2198,11 @@ class RayFoldThoughtTrainer:
                         leaf_nodes = self.get_leaf_nodes(nodes_list)
 
                         # compute rewards and advantagers
-                        leaf_nodes_score = self.compute_leaf_nodes_rewards(leaf_nodes, apply_format_punish=self.config.algorithm.apply_format_punish)
+                        leaf_nodes_score, format_err_ratio = self.compute_leaf_nodes_rewards(leaf_nodes, apply_format_punish=self.config.algorithm.apply_format_punish)
                         avg_score = sum(leaf_nodes_score) / len(leaf_nodes_score)
                         metrics.update({
-                            "leaf_scores/train": avg_score
+                            "leaf_scores/train_fold": avg_score,
+                            "leaf_scores/format_err_ratio": format_err_ratio
                         })
 
                         self.print_node(nodes_list[0][0])
@@ -2733,7 +2740,7 @@ class RayMixFoldThoughtTrainer:
             leaf_batch_output.batch["response_mask"] = compute_response_mask(leaf_batch_output)
 
             # compute rewards and advantagers
-            leaf_nodes_score = self.compute_leaf_nodes_rewards(leaf_nodes, apply_format_punish=False) # do not apply format punish during validation
+            leaf_nodes_score, _ = self.compute_leaf_nodes_rewards(leaf_nodes, apply_format_punish=False) # do not apply format punish during validation
             sample_scores.extend(leaf_nodes_score)
 
             input_ids = leaf_batch_output.batch["input_ids"][:, :self.config.data.max_prompt_length]
@@ -2772,14 +2779,19 @@ class RayMixFoldThoughtTrainer:
         for data_source, var2metric2val in data_src2var2metric2val.items():
             core_var = "acc" if "acc" in var2metric2val else "reward"
             for var_name, metric2val in var2metric2val.items():
-                n_max = max([int(name.split("@")[-1].split("/")[0]) for name in metric2val.keys()])
+                if var_name != "reward":
+                    continue
+                # n_max = max([int(name.split("@")[-1].split("/")[0]) for name in metric2val.keys()])
                 for metric_name, metric_val in metric2val.items():
-                    if (var_name == core_var) and any(metric_name.startswith(pfx) for pfx in ["mean", "maj", "best"]) and (f"@{n_max}" in metric_name):
-                        metric_sec = "val-core"
-                    else:
-                        metric_sec = "val-aux"
-                    pfx = f"{metric_sec}/{data_source}/{var_name}/{metric_name}"
-                    metric_dict[pfx] = metric_val
+                    if metric_name == "mean@1":
+                        pfx = f"val-core/{data_source}/{var_name}/{metric_name}"
+                        metric_dict[pfx] = metric_val
+                        # if (var_name == core_var) and any(metric_name.startswith(pfx) for pfx in ["mean", "maj", "best"]) and (f"@{n_max}" in metric_name):
+                        #     metric_sec = "val-core"
+                        # else:
+                        #     metric_sec = "val-aux"
+                        # pfx = f"{metric_sec}/{data_source}/{var_name}/{metric_name}"
+                        # metric_dict[pfx] = metric_val
 
         avg_test_score = sum(sample_scores) / len(sample_scores)
         metric_dict["leaf_scores/val_fold"] = avg_test_score
@@ -3270,7 +3282,8 @@ class RayMixFoldThoughtTrainer:
                     correct_end_cnt += 1
                     nodes_score_.append(node.reward)
         print("### Format correct end leaf nodes: {}/{} ###".format(correct_end_cnt, len(leaf_nodes)))
-        return nodes_score_
+        format_err_ratio = 1.0 - correct_end_cnt / len(leaf_nodes)
+        return nodes_score_, format_err_ratio
 
         
     def format_gen_batch(self, batch):
@@ -3494,10 +3507,11 @@ class RayMixFoldThoughtTrainer:
                             leaf_nodes = self.get_leaf_nodes(nodes_list)
 
                             # compute rewards and advantagers
-                            leaf_nodes_score = self.compute_leaf_nodes_rewards(leaf_nodes, apply_format_punish=self.config.algorithm.apply_format_punish)
+                            leaf_nodes_score, format_err_ratio = self.compute_leaf_nodes_rewards(leaf_nodes, apply_format_punish=self.config.algorithm.apply_format_punish)
                             avg_score = sum(leaf_nodes_score) / len(leaf_nodes_score)
                             metrics.update({
-                                "leaf_scores/train_fold": avg_score
+                                "leaf_scores/train_fold": avg_score,
+                                "leaf_scores/format_err_ratio": format_err_ratio
                             })
 
                             self.print_node(nodes_list[0][0])

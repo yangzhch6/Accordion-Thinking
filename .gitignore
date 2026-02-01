@@ -7,4 +7,5 @@ outputs
 __pycache__
 slurm
 eval
-scripts_hidden
+scripts
+tmp
