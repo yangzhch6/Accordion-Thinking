@@ -42,6 +42,17 @@ pip install -r requirements.txt
 ## ⚡️ Training
 To train the model, run the following command:
 
+### Cold Start SFT
+You may sft your base model using: https://github.com/yangzhch6/Accordion-Thinking
+
+
+### Prepare RL Training Data
+```python
+python Folding-Thoughts/data/preprocess/think-fold/think_openr1.py
+python Folding-Thoughts/data/preprocess/think-fold/think_test.py
+```
+
+### RL Training
 **Mix Training:**
 ```sh
 set -x
@@ -51,7 +62,7 @@ export NUM_GPUS=$(nvidia-smi --list-gpus | wc -l)
 
 ## model, file and save path 
 project_name='Accordion-Thinking'
-experiment_name='Qwen3-4B-Base-Openr1MATH46KStepFold-mix-d6r6k-Unfold16k'
+experiment_name='<your model name>-mix-d6r6k-Unfold16k'
 model_name_or_path=<your cold start model here>
 train_path=data/think-fold/openr1-math-46k.parquet  # training data path
 test_path=data/think-fold/amc23_aime2425_math500_minerva.parquet
