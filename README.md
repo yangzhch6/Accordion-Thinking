@@ -42,17 +42,17 @@ pip install -r requirements.txt
 ## ⚡️ Training
 To train the model, run the following command:
 
-### Cold Start SFT
+### 1. Cold Start SFT
 You may sft your base model using: https://github.com/yangzhch6/Accordion-Thinking
 
 
-### Prepare RL Training Data
+### 2. Prepare RL Training Data
 ```python
 python Folding-Thoughts/data/preprocess/think-fold/think_openr1.py
 python Folding-Thoughts/data/preprocess/think-fold/think_test.py
 ```
 
-### RL Training
+### 3. RL Training
 **Mix Training:**
 ```sh
 set -x
