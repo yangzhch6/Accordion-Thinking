@@ -38,6 +38,26 @@ pip install torch==2.7.1 --index-url https://download.pytorch.org/whl/cu126 # CU
 pip install -r requirements.txt
 ```
 
+Then, add special tokens to your base model: (this modification should be conducted in `tokenizer_config.json`)
+```json
+"xxx": {
+	"content": "<step_bed619fva643c0v108hd53gcy>",
+	"lstrip": false,
+	"normalized": false,
+	"rstrip": false,
+	"single_word": false,
+	"special": false
+},
+"xxx": {
+	"content": "</step_bed619fva643c0v108hd53gcy>",
+	"lstrip": false,
+	"normalized": false,
+	"rstrip": false,
+	"single_word": false,
+	"special": false
+}
+```
+
 
 ## ⚡️ Training
 To train the model, run the following command:
