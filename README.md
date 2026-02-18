@@ -57,6 +57,7 @@ Then, add special tokens to your base model: (this modification should be conduc
 	"special": false
 }
 ```
+For Qwen2.5-Math Series, you should change the `rope_theta` to 40000.0 and `max_position_embeddings` to 32768
 
 
 ## ⚡️ Training
