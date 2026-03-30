@@ -150,11 +150,13 @@ class SequenceNode:
             depth=0, 
             prompt_length=10240, 
             max_response_length=4096, 
+            max_cumulative_length=None,
             max_step_summary_length=1536, 
         ):
         self.depth = depth
         self.prompt_length = prompt_length
         self.max_response_length = max_response_length
+        self.max_cumulative_length = prompt_length if max_cumulative_length is None else max_cumulative_length
         self.max_step_summary_length = max_step_summary_length
 
         self.reward = None
@@ -166,6 +168,10 @@ class SequenceNode:
         self.eos_step_token_id = eos_step_token_id
         self.pad_token_id = pad_token_id
         self.replace_ids = replace_ids
+        self.parent_cumulative_generated_length = int(self.data_dict.get("cumulative_generated_length", 0))
+        self.current_generated_length = 0
+        self.cumulative_generated_length = self.parent_cumulative_generated_length
+        self.is_over_max_cumulative_length = False
         
         # if self.depth == 0:
         #     self.is_end = False # 记录是否为叶子节点，只有当输出包含 '</think>' 或者 不符合step format时, 才为True
@@ -187,9 +193,12 @@ class SequenceNode:
             self.is_end = False # 记录是否为叶子节点，只有当输出包含 '</think>' 或者 不符合step format时, 才为True
             self.step_format = True # 记录response 是否符合 step format: 包含俩step tokens，且summary content长度不超过max_step_summary_length
         else:
+            self.current_generated_length = int(self.data_dict["attention_mask"][:, self.prompt_length:].sum(dim=-1)[0].item())
+            self.cumulative_generated_length = self.parent_cumulative_generated_length + self.current_generated_length
+            self.is_over_max_cumulative_length = self.cumulative_generated_length > self.max_cumulative_length
             self.step_format = check_step_format(self.data_dict["responses"][0].tolist(), self.bos_step_token_id, self.eos_step_token_id, self.max_step_summary_length)
 
-            if not self.step_format:
+            if not self.step_format or self.is_over_max_cumulative_length:
                 self.is_end = True
             else:
                 self.is_end = False
@@ -349,6 +358,7 @@ class SequenceNode:
                 'interaction_kwargs': np.array([self.data_dict['interaction_kwargs']], dtype=object),
                 'uid': np.array([self.data_dict['uid']], dtype=object),
                 'sid': np.array([self.data_dict['sid']], dtype=object),
+                'cumulative_generated_length': np.array([self.cumulative_generated_length], dtype=np.int64),
             })
 
         else:
@@ -374,6 +384,7 @@ class SequenceNode:
                 'interaction_kwargs': np.array([self.data_dict['interaction_kwargs']], dtype=object),
                 'uid': np.array([self.data_dict['uid']], dtype=object),
                 'sid': np.array([self.data_dict['sid']], dtype=object),
+                'cumulative_generated_length': np.array([self.cumulative_generated_length], dtype=np.int64),
             })
         
         return node_input_batch

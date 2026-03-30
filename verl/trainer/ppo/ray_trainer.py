@@ -620,6 +620,7 @@ class RayPPOTrainer:
 
     def _validate(self):
         data_source_lst = []
+        response_token_length_lst = []
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)
 
         # Lists to collect samples for the table
@@ -686,6 +687,14 @@ class RayPPOTrainer:
 
             test_batch = test_batch.union(test_output_gen_batch)
 
+            response_length = test_batch.batch["responses"].size(1)
+            if "loss_mask" in test_batch.batch:
+                response_mask = test_batch.batch["loss_mask"][:, -response_length:]
+            else:
+                response_mask = test_batch.batch["attention_mask"][:, -response_length:]
+            response_token_lengths = response_mask.sum(-1).cpu().tolist()
+            response_token_length_lst.extend(response_token_lengths)
+
             # evaluate using reward_function
             scores, result = self.val_reward_fn(test_batch, return_dict=True)
             reward_tensor = result["reward_tensor"]
@@ -719,6 +728,8 @@ class RayPPOTrainer:
             assert len(lst) == 0 or len(lst) == len(sample_scores), f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
 
         data_sources = np.concatenate(data_source_lst, axis=0)
+        response_token_lengths = np.asarray(response_token_length_lst, dtype=np.float32)
+        assert len(response_token_lengths) == len(data_sources), f"{len(response_token_lengths)=}, {len(data_sources)=}"
         
         print("Processing validation metrics...")
         data_src2var2metric2val = process_validation_metrics(data_sources, sample_inputs, reward_extra_infos_dict)
@@ -734,6 +745,10 @@ class RayPPOTrainer:
                         metric_sec = "val-aux"
                     pfx = f"{metric_sec}/{data_source}/{var_name}/{metric_name}"
                     metric_dict[pfx] = metric_val
+
+        for data_source in np.unique(data_sources):
+            data_source_mask = data_sources == data_source
+            metric_dict[f"val-length/{data_source}/response_token_length_avg"] = float(np.mean(response_token_lengths[data_source_mask]))
 
         return metric_dict
 
@@ -1544,10 +1559,45 @@ class RayFoldThoughtTrainer:
         # Log to each configured logger
         self.validation_generations_logger.log(self.config.trainer.logger, samples, self.global_steps)
 
+    def _compute_solution_path_stats(self, root_node):
+        current_node = root_node
+        step_count = 0
+        total_response_tokens = 0
+        total_token_usage = 0
+        peak_token = 0
+
+        while len(current_node.children) != 0:
+            current_node = current_node.children[0]
+            step_count += 1
+
+            padded_response_length = current_node.data_dict["responses"].size(1)
+            attention_mask = current_node.data_dict["attention_mask"]
+            prompt_token_length = int(attention_mask[:, :-padded_response_length].sum().item())
+            response_token_length = int(attention_mask[:, -padded_response_length:].sum().item())
+
+            total_response_tokens += response_token_length
+            step_token_usage = prompt_token_length + response_token_length
+            total_token_usage += step_token_usage
+            peak_token = max(peak_token, step_token_usage)
+
+        return {
+            "step_count": step_count,
+            "total_response_tokens": total_response_tokens,
+            "total_token_usage": total_token_usage,
+            "peak_token": peak_token,
+        }
 
     def _validate_sequence_fold(self): 
         print("## Begin validation")
         data_source_lst = []
+        bench2steps = defaultdict(list)
+        bench2step_token_lengths = defaultdict(list)
+        bench2rollout_token_lengths = defaultdict(list)
+        bench2total_token_usage = defaultdict(list)
+        bench2peak_token = defaultdict(list)
+        solution_step_counts = []
+        solution_total_token_usages = []
+        solution_peak_tokens = []
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)
 
         # Only save leaf outputs
@@ -1566,6 +1616,26 @@ class RayFoldThoughtTrainer:
 
             test_nodes_list = self.sequential_step_rollout(test_gen_batch, is_validation=True)
             leaf_nodes = self.get_leaf_nodes(test_nodes_list)
+
+            for root_node in test_nodes_list[0]:
+                path_stats = self._compute_solution_path_stats(root_node)
+                rollout_steps = path_stats["step_count"]
+                rollout_token_length = path_stats["total_response_tokens"]
+                total_token_usage = path_stats["total_token_usage"]
+                peak_token = path_stats["peak_token"]
+
+                if rollout_steps == 0:
+                    continue
+
+                data_source = root_node.data_dict.get("data_source", "unknown")
+                bench2steps[data_source].append(float(rollout_steps))
+                bench2step_token_lengths[data_source].append(float(rollout_token_length / rollout_steps))
+                bench2rollout_token_lengths[data_source].append(float(rollout_token_length))
+                bench2total_token_usage[data_source].append(float(total_token_usage))
+                bench2peak_token[data_source].append(float(peak_token))
+                solution_step_counts.append(float(rollout_steps))
+                solution_total_token_usages.append(float(total_token_usage))
+                solution_peak_tokens.append(float(peak_token))
 
             # format leaf node batch 
             leaf_batch_output = []
@@ -1630,6 +1700,19 @@ class RayFoldThoughtTrainer:
 
         avg_test_score = sum(sample_scores) / len(sample_scores)
         metric_dict["leaf_scores/val"] = avg_test_score
+
+        if solution_step_counts:
+            metric_dict["val-length/overall/avg_solution_step_count"] = float(np.mean(solution_step_counts))
+            metric_dict["val-length/overall/avg_solution_total_token_usage"] = float(np.mean(solution_total_token_usages))
+            metric_dict["val-length/overall/avg_solution_peak_token"] = float(np.mean(solution_peak_tokens))
+
+        for data_source, steps in bench2steps.items():
+            metric_dict[f"val-length/{data_source}/avg_step"] = float(np.mean(steps))
+            metric_dict[f"val-length/{data_source}/avg_step_token_length"] = float(np.mean(bench2step_token_lengths[data_source]))
+            metric_dict[f"val-length/{data_source}/avg_rollout_token_length"] = float(np.mean(bench2rollout_token_lengths[data_source]))
+            metric_dict[f"val-length/{data_source}/avg_solution_step_count"] = float(np.mean(steps))
+            metric_dict[f"val-length/{data_source}/avg_solution_total_token_usage"] = float(np.mean(bench2total_token_usage[data_source]))
+            metric_dict[f"val-length/{data_source}/avg_solution_peak_token"] = float(np.mean(bench2peak_token[data_source]))
 
         return metric_dict
         
@@ -1887,7 +1970,8 @@ class RayFoldThoughtTrainer:
                 replace_ids=replace_ids,
                 depth=depth,
                 prompt_length=self.config.data.max_prompt_length,
-                max_response_length=self.config.data.max_response_length
+                max_response_length=self.config.data.max_response_length,
+                max_cumulative_length=self.config.data.max_cumulative_length,
             )
 
         # 使用ThreadPoolExecutor并行处理
@@ -2060,14 +2144,21 @@ class RayFoldThoughtTrainer:
 
         nodes_score_ = []
         correct_end_cnt = 0
+        over_limit_cnt = 0
         for node, score in zip(leaf_nodes, nodes_score):
             if node.reward is not None: # 防止重复赋值
                 print("Warning: node.reward is already set, do not overwrite")
                 nodes_score_.append(node.reward)
                 continue
             else:
+                if node.is_over_max_cumulative_length:
+                    node.reward = 0
+                    over_limit_cnt += 1
+                    if node.step_format:
+                        correct_end_cnt += 1
+                    nodes_score_.append(node.reward)
                 # 如果启用了格式惩罚且节点不是结束节点，则奖励设为0
-                if apply_format_punish and not node.is_end:
+                elif apply_format_punish and not node.is_end:
                     node.reward = 0
                     nodes_score_.append(node.reward)
                 else:
@@ -2075,6 +2166,7 @@ class RayFoldThoughtTrainer:
                     correct_end_cnt += 1
                     nodes_score_.append(node.reward)
         print("### Format correct end leaf nodes: {}/{} ###".format(correct_end_cnt, len(leaf_nodes)))
+        print("### Over limit leaf nodes: {}/{} ###".format(over_limit_cnt, len(leaf_nodes)))
         format_err_ratio = 1.0 - correct_end_cnt / len(leaf_nodes)
         return nodes_score_, format_err_ratio
 
@@ -3052,7 +3144,8 @@ class RayMixFoldThoughtTrainer:
                 replace_ids=replace_ids,
                 depth=depth,
                 prompt_length=self.config.data.max_prompt_length,
-                max_response_length=self.config.data.max_response_length
+                max_response_length=self.config.data.max_response_length,
+                max_cumulative_length=self.config.data.max_cumulative_length,
             )
 
         # 使用ThreadPoolExecutor并行处理
@@ -3267,14 +3360,21 @@ class RayMixFoldThoughtTrainer:
 
         nodes_score_ = []
         correct_end_cnt = 0
+        over_limit_cnt = 0
         for node, score in zip(leaf_nodes, nodes_score):
             if node.reward is not None: # 防止重复赋值
                 print("Warning: node.reward is already set, do not overwrite")
                 nodes_score_.append(node.reward)
                 continue
             else:
+                if node.is_over_max_cumulative_length:
+                    node.reward = 0
+                    over_limit_cnt += 1
+                    if node.step_format:
+                        correct_end_cnt += 1
+                    nodes_score_.append(node.reward)
                 # 如果启用了格式惩罚且节点不是结束节点，则奖励设为0
-                if apply_format_punish and not node.is_end:
+                elif apply_format_punish and not node.is_end:
                     node.reward = 0
                     nodes_score_.append(node.reward)
                 else:
@@ -3282,6 +3382,7 @@ class RayMixFoldThoughtTrainer:
                     correct_end_cnt += 1
                     nodes_score_.append(node.reward)
         print("### Format correct end leaf nodes: {}/{} ###".format(correct_end_cnt, len(leaf_nodes)))
+        print("### Over limit leaf nodes: {}/{} ###".format(over_limit_cnt, len(leaf_nodes)))
         format_err_ratio = 1.0 - correct_end_cnt / len(leaf_nodes)
         return nodes_score_, format_err_ratio
 
