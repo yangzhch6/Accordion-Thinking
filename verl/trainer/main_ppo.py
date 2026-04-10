@@ -22,6 +22,7 @@ import hydra
 import ray
 from omegaconf import OmegaConf
 
+from verl.trainer.ppo.deletethink_trainer import RayDeletethinkTrainer
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer, RayFoldThoughtTrainer, RayMixFoldThoughtTrainer
 from verl.trainer.ppo.reward import load_reward_manager
 from verl.workers.reward_manager.prime import MathVerifyRewardManager
@@ -179,6 +180,8 @@ class TaskRunner:
             Trainer = RayFoldThoughtTrainer
         elif config.trainer.task == "mix-fold":
             Trainer = RayMixFoldThoughtTrainer
+        elif config.trainer.task == "deletethink":
+            Trainer = RayDeletethinkTrainer
         else:
             raise NotImplementedError(f"Trainer task {config.trainer.task} is not implemented.")
 

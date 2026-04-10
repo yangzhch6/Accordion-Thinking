@@ -18,7 +18,7 @@
 <a href="https://arxiv.org/abs/2602.03249"><img src="./figs/arxiv.png" width="15%"></a>
 <a href="https://www.alphaxiv.org/abs/2602.03249"><img src="./figs/alphaxiv.png" width="15%"></a>
 <a href="https://github.com/yangzhch6/Accordion-Thinking"><img src="./figs/github.png" width="15%"></a>
-<a href="https://huggingface.co/datasets/yangzhch6/Accordion-Thinking-Synthetic-Data"><img src="./figs/hf.png" width="15%"></a>
+<a href="https://huggingface.co/collections/yangzhch6/acccordion-thinking"><img src="./figs/hf.png" width="15%"></a>
 </div>
 
 </div>
